@@ -12,7 +12,6 @@ export type ChatCompletion = {
   choices: { message: { role: string; content: string | null } }[];
 };
 
-/** Optional per-request overrides (from the web UI) */
 export type ChatOptions = {
   model?: string;
   temperature?: number;
@@ -24,18 +23,19 @@ export async function chatCompletion(
   messages: ChatMessage[],
   options: ChatOptions = {}
 ): Promise<ChatCompletion> {
-  const apiKey =
+  const apiKey = (
     options.apiKey ||
     process.env.OPENROUTER_API_KEY ||
-    "";
+    ""
+  ).trim();
 
   if (!apiKey) {
     throw new Error(
-      "No OpenRouter API key. Paste your key in the app settings (⚙️) or set OPENROUTER_API_KEY. Get one free at https://openrouter.ai/keys"
+      "No OpenRouter API key. Paste your key in Settings and click Test connection. Get one at https://openrouter.ai/keys"
     );
   }
 
-  const model = options.model || DEFAULT_MODEL;
+  const model = (options.model || DEFAULT_MODEL).trim();
 
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -65,12 +65,17 @@ export async function chatCompletion(
     }
     if (res.status === 401) {
       throw new Error(
-        `OpenRouter 401 – invalid API key. Get a new key at https://openrouter.ai/keys and paste it in ⚙️ Settings.`
+        `OpenRouter 401 – invalid API key. Get a new key at https://openrouter.ai/keys`
+      );
+    }
+    if (res.status === 402) {
+      throw new Error(
+        `OpenRouter 402 – no credits. Add credits at openrouter.ai or pick a free model.`
       );
     }
     if (res.status === 404) {
       throw new Error(
-        `OpenRouter 404 – model not found ("${model}"). Pick another model in ⚙️ Settings (e.g. openai/gpt-4o-mini).`
+        `OpenRouter 404 – model not found ("${model}"). Use openai/gpt-4o-mini`
       );
     }
     throw new Error(`OpenRouter error ${res.status}: ${detail}`);
