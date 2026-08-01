@@ -42,10 +42,10 @@ When relevant, reference or suggest saving important findings back to the knowle
 
 Be concise, structured, and actionable. Use markdown. Always end with a short suggestion for next steps if useful.`;
 
-/** MCP-style tool selection via LLM */
 async function decideTools(
   userQuery: string,
-  intent: any
+  intent: any,
+  agentOptions: { apiKey?: string; model?: string } = {}
 ): Promise<{ name: string; args: Record<string, any> }[]> {
   const toolList = listTools()
     .map((t) => `- ${t.name}: ${t.description}`)
@@ -63,7 +63,12 @@ async function decideTools(
   ];
 
   try {
-    const res = await chatCompletion(messages, { temperature: 0.1, max_tokens: 400 });
+    const res = await chatCompletion(messages, {
+      temperature: 0.1,
+      max_tokens: 400,
+      apiKey: agentOptions.apiKey,
+      model: agentOptions.model,
+    });
     const raw = res.choices[0]?.message?.content || "[]";
     const cleaned = raw.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
@@ -71,15 +76,21 @@ async function decideTools(
       return parsed.filter((t) => t && t.name && TOOLS[t.name]);
     }
   } catch {
-    // ignore parse errors
+    // ignore
   }
   return [];
 }
 
+export type AgentOptions = {
+  apiKey?: string;
+  model?: string;
+};
+
 export async function* runAgenticLoop(
   userQuery: string,
   sessionId: string,
-  history: { role: "user" | "assistant"; content: string }[] = []
+  history: { role: "user" | "assistant"; content: string }[] = [],
+  agentOptions: AgentOptions = {}
 ): AsyncGenerator<AgentEvent> {
   try {
     yield { type: "step", step: "query", message: "User query received" };
@@ -101,6 +112,8 @@ export async function* runAgenticLoop(
     const intentRes = await chatCompletion(intentMessages, {
       temperature: 0.1,
       max_tokens: 300,
+      apiKey: agentOptions.apiKey,
+      model: agentOptions.model,
     });
     const intentRaw = intentRes.choices[0]?.message?.content || "{}";
     let intent: any = {
@@ -142,6 +155,8 @@ export async function* runAgenticLoop(
     const planRes = await chatCompletion(planMessages, {
       temperature: 0.3,
       max_tokens: 400,
+      apiKey: agentOptions.apiKey,
+      model: agentOptions.model,
     });
     const plan =
       planRes.choices[0]?.message?.content ||
@@ -183,7 +198,7 @@ export async function* runAgenticLoop(
       }
     }
 
-    const selectedTools = await decideTools(userQuery, intent);
+    const selectedTools = await decideTools(userQuery, intent, agentOptions);
     let toolContext = "";
 
     if (selectedTools.length > 0) {
@@ -249,6 +264,8 @@ export async function* runAgenticLoop(
     const answerRes = await chatCompletion(finalMessages, {
       temperature: 0.5,
       max_tokens: 1800,
+      apiKey: agentOptions.apiKey,
+      model: agentOptions.model,
     });
 
     const answer =
