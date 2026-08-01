@@ -19,11 +19,7 @@
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "openai": "^4.77.0",
-    "@octokit/rest": "^21.0.2",
-    "uuid": "^11.0.3",
-    "clsx": "^2.1.1",
-    "lucide-react": "^0.468.0"
+    "uuid": "^11.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
