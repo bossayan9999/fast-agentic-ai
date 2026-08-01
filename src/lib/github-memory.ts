@@ -1,8 +1,12 @@
 import { Octokit } from "@octokit/rest";
 
 const owner = process.env.GITHUB_OWNER || "bossayan9999";
-const repo = process.env.GITHUB_REPO || "fast-agentic-ai";
-const knowledgePath = "knowledge";
+// Main app repo (for session logs etc.)
+const appRepo = process.env.GITHUB_REPO || "fast-agentic-ai";
+// Dedicated Obsidian-style vault (preferred for knowledge)
+const vaultOwner = process.env.VAULT_OWNER || owner;
+const vaultRepo = process.env.VAULT_REPO || "obsidian-agent-vault";
+const knowledgePath = process.env.VAULT_PATH || ""; // root of vault repo by default
 
 function getOctokit() {
   const token = process.env.GITHUB_TOKEN;
@@ -10,6 +14,9 @@ function getOctokit() {
   return new Octokit({ auth: token });
 }
 
+/**
+ * List markdown files in the dedicated vault (or knowledge/ folder of app repo)
+ */
 export async function listKnowledgeFiles(): Promise<
   { name: string; path: string; sha: string; size: number }[]
 > {
@@ -18,21 +25,49 @@ export async function listKnowledgeFiles(): Promise<
 
   try {
     const { data } = await octokit.repos.getContent({
-      owner,
-      repo,
-      path: knowledgePath,
+      owner: vaultOwner,
+      repo: vaultRepo,
+      path: knowledgePath || "",
     });
 
     if (!Array.isArray(data)) return [];
 
-    return data
-      .filter((f) => f.type === "file" && (f.name.endsWith(".md") || f.name.endsWith(".txt")))
-      .map((f) => ({
-        name: f.name,
-        path: f.path,
-        sha: f.sha!,
-        size: f.size || 0,
-      }));
+    const files: { name: string; path: string; sha: string; size: number }[] = [];
+
+    for (const item of data) {
+      if (item.type === "file" && (item.name.endsWith(".md") || item.name.endsWith(".txt"))) {
+        files.push({
+          name: item.name,
+          path: item.path,
+          sha: item.sha!,
+          size: item.size || 0,
+        });
+      } else if (item.type === "dir" && !item.name.startsWith(".")) {
+        try {
+          const sub = await octokit.repos.getContent({
+            owner: vaultOwner,
+            repo: vaultRepo,
+            path: item.path,
+          });
+          if (Array.isArray(sub.data)) {
+            for (const f of sub.data) {
+              if (f.type === "file" && (f.name.endsWith(".md") || f.name.endsWith(".txt"))) {
+                files.push({
+                  name: f.name,
+                  path: f.path,
+                  sha: f.sha!,
+                  size: f.size || 0,
+                });
+              }
+            }
+          }
+        } catch {
+          // ignore subfolder errors
+        }
+      }
+    }
+
+    return files;
   } catch (err: any) {
     if (err.status === 404) return [];
     console.error("listKnowledgeFiles error:", err.message);
@@ -46,8 +81,8 @@ export async function readKnowledgeFile(path: string): Promise<string | null> {
 
   try {
     const { data } = await octokit.repos.getContent({
-      owner,
-      repo,
+      owner: vaultOwner,
+      repo: vaultRepo,
       path,
     });
 
@@ -62,9 +97,10 @@ export async function readKnowledgeFile(path: string): Promise<string | null> {
   }
 }
 
-export async function searchKnowledge(query: string, limit = 5): Promise<
-  { path: string; name: string; snippet: string }[]
-> {
+export async function searchKnowledge(
+  query: string,
+  limit = 5
+): Promise<{ path: string; name: string; snippet: string }[]> {
   const files = await listKnowledgeFiles();
   const results: { path: string; name: string; snippet: string }[] = [];
   const q = query.toLowerCase();
@@ -74,10 +110,7 @@ export async function searchKnowledge(query: string, limit = 5): Promise<
     const content = await readKnowledgeFile(file.path);
     if (!content) continue;
 
-    if (
-      file.name.toLowerCase().includes(q) ||
-      content.toLowerCase().includes(q)
-    ) {
+    if (file.name.toLowerCase().includes(q) || content.toLowerCase().includes(q)) {
       const idx = content.toLowerCase().indexOf(q);
       let snippet = content.slice(0, 280);
       if (idx > 0) {
@@ -105,12 +138,20 @@ export async function saveKnowledgeNote(
     return { success: false, error: "GITHUB_TOKEN not configured" };
   }
 
-  const path = `${knowledgePath}/${filename.endsWith(".md") ? filename : filename + ".md"}`;
+  const path = knowledgePath
+    ? `${knowledgePath}/${filename.endsWith(".md") ? filename : filename + ".md"}`
+    : filename.endsWith(".md")
+    ? filename
+    : filename + ".md";
 
   try {
     let sha: string | undefined;
     try {
-      const existing = await octokit.repos.getContent({ owner, repo, path });
+      const existing = await octokit.repos.getContent({
+        owner: vaultOwner,
+        repo: vaultRepo,
+        path,
+      });
       if (!Array.isArray(existing.data) && existing.data.type === "file") {
         sha = existing.data.sha;
       }
@@ -119,8 +160,8 @@ export async function saveKnowledgeNote(
     }
 
     await octokit.repos.createOrUpdateFileContents({
-      owner,
-      repo,
+      owner: vaultOwner,
+      repo: vaultRepo,
       path,
       message,
       content: Buffer.from(content).toString("base64"),
@@ -134,6 +175,9 @@ export async function saveKnowledgeNote(
   }
 }
 
+/**
+ * Append a conversation turn to a session log in the *app* repo
+ */
 export async function appendSessionLog(
   sessionId: string,
   role: "user" | "assistant",
@@ -150,7 +194,11 @@ export async function appendSessionLog(
     let existing = "";
     let sha: string | undefined;
     try {
-      const { data } = await octokit.repos.getContent({ owner, repo, path });
+      const { data } = await octokit.repos.getContent({
+        owner,
+        repo: appRepo,
+        path,
+      });
       if (!Array.isArray(data) && data.type === "file" && "content" in data) {
         existing = Buffer.from(data.content, "base64").toString("utf-8");
         sha = data.sha;
@@ -161,7 +209,7 @@ export async function appendSessionLog(
 
     await octokit.repos.createOrUpdateFileContents({
       owner,
-      repo,
+      repo: appRepo,
       path,
       message: `Append ${role} message to session ${sessionId}`,
       content: Buffer.from(existing + entry).toString("base64"),
@@ -170,4 +218,13 @@ export async function appendSessionLog(
   } catch (err: any) {
     console.error("appendSessionLog error:", err.message);
   }
+}
+
+export function getVaultInfo() {
+  return {
+    owner: vaultOwner,
+    repo: vaultRepo,
+    path: knowledgePath || "(repo root)",
+    url: `https://github.com/${vaultOwner}/${vaultRepo}`,
+  };
 }
