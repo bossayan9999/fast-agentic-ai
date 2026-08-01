@@ -107,29 +107,8 @@ After deploy your app will be at:
 ### Option B – Deploy from CLI
 
 ```bash
-# One-time login
 npm run cf:login
-
-# Build + deploy to project "fast-agentic-ai"
 npm run deploy
-```
-
-Scripts (already wired):
-
-| Script | Command |
-|--------|---------|
-| `npm run pages:build` | Build with next-on-pages |
-| `npm run preview` | Local Pages preview (`--project-name=fast-agentic-ai`) |
-| `npm run deploy` | Build + deploy to **`fast-agentic-ai`** |
-| `npm run cf:login` | `wrangler login` |
-| `npm run cf:whoami` | Show Cloudflare account |
-
-`wrangler.toml` is configured with:
-
-```toml
-name = "fast-agentic-ai"
-pages_build_output_dir = ".vercel/output/static"
-compatibility_flags = ["nodejs_compat"]
 ```
 
 ---
@@ -149,6 +128,115 @@ compatibility_flags = ["nodejs_compat"]
 - `POST /api/chat` – SSE agentic loop
 - `GET /api/memory?q=...` – search vault
 - `POST /api/memory` – save note to vault
+
+---
+
+## Troubleshooting: API Keys & Environment
+
+### Required vs optional keys
+
+| Variable | Required? | Where to get it |
+|----------|-----------|-----------------|
+| `OPENROUTER_API_KEY` | **Yes** (for chat answers) | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| `OPENROUTER_MODEL` | No (has default) | e.g. `anthropic/claude-3.5-sonnet` |
+| `GITHUB_TOKEN` | No (only for vault search / save) | GitHub → Settings → Developer settings → PAT (`repo` scope) |
+| `NEXT_PUBLIC_APP_URL` | No | `http://localhost:3000` locally |
+
+Without `OPENROUTER_API_KEY`, the UI still loads but every chat request will fail with an API key error.
+
+### Local setup (Windows PowerShell)
+
+Always run commands **inside the project folder**:
+
+```powershell
+cd C:\Users\YOUR_USERNAME\fast-agentic-ai
+```
+
+Create `.env.local` (PowerShell):
+
+```powershell
+@"
+OPENROUTER_API_KEY=sk-or-v1-YOUR_KEY_HERE
+OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+"@ | Out-File -FilePath .env.local -Encoding utf8
+```
+
+Or copy the example then edit:
+
+```powershell
+copy .env.example .env.local
+notepad .env.local
+```
+
+Restart the dev server after any change to `.env.local`:
+
+```powershell
+# Ctrl+C to stop, then:
+npm run dev
+```
+
+### Local setup (macOS / Linux)
+
+```bash
+cd fast-agentic-ai
+cp .env.example .env.local
+# edit .env.local and set OPENROUTER_API_KEY
+npm run dev
+```
+
+### Checklist when chat fails
+
+1. **Are you in the project directory?**  
+   `.env.local` must be next to `package.json`, not in your home folder.
+
+2. **Does `.env.local` exist and contain the key?**  
+   ```powershell
+   Get-Content .env.local
+   ```  
+   You should see a line starting with `OPENROUTER_API_KEY=sk-or-v1-...`  
+   No quotes, no spaces around `=`.
+
+3. **Did you restart `npm run dev` after editing `.env.local`?**  
+   Next.js only loads env files at startup.
+
+4. **Is the key valid?**  
+   - Create/copy a key at https://openrouter.ai/keys  
+   - Ensure the account has credits / free quota  
+   - Key should look like `sk-or-v1-...` (not a GitHub or OpenAI key)
+
+5. **Check the terminal / browser Network tab**  
+   - Failed `/api/chat` responses often include `OPENROUTER_API_KEY is not set` or `OpenRouter error 401`  
+   - `401` = bad or missing key  
+   - `402` = no credits on OpenRouter  
+
+6. **Cloudflare deploy**  
+   Dashboard env vars are separate from local `.env.local`.  
+   Set `OPENROUTER_API_KEY` under  
+   **Workers & Pages → your project → Settings → Environment variables**  
+   (Production and Preview), then **Retry deployment**.
+
+### Common mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Ran `cp .env.example` from `C:\Users\You` | `cd` into `fast-agentic-ai` first |
+| Put key in `.env` but not `.env.local` | Next.js loads `.env.local` for local dev — use that name |
+| Wrapped key in quotes with spaces | Use `OPENROUTER_API_KEY=sk-or-v1-...` only |
+| Used OpenAI key (`sk-...`) on OpenRouter | Use an OpenRouter key from openrouter.ai/keys |
+| Changed env but server still old | Restart `npm run dev` |
+| Key works locally, fails on Cloudflare | Add the same vars in the Cloudflare project settings |
+
+### Quick test
+
+With the app running, open http://localhost:3000 and send:
+
+```text
+What is 2^10 + 15?
+```
+
+- If the pipeline runs and you get `1024 + 15 = 1039` (or similar), the API key works.
+- If you see an error about `OPENROUTER_API_KEY` or `401`, re-check the steps above.
 
 ## License
 
