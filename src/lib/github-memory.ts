@@ -1,12 +1,24 @@
 import { Octokit } from "@octokit/rest";
 
+function toBase64(text: string): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(text).toString("base64");
+  }
+  return btoa(unescape(encodeURIComponent(text)));
+}
+
+function fromBase64(b64: string): string {
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(b64, "base64").toString("utf-8");
+  }
+  return decodeURIComponent(escape(atob(b64)));
+}
+
 const owner = process.env.GITHUB_OWNER || "bossayan9999";
-// Main app repo (for session logs etc.)
 const appRepo = process.env.GITHUB_REPO || "fast-agentic-ai";
-// Dedicated Obsidian-style vault (preferred for knowledge)
 const vaultOwner = process.env.VAULT_OWNER || owner;
 const vaultRepo = process.env.VAULT_REPO || "obsidian-agent-vault";
-const knowledgePath = process.env.VAULT_PATH || ""; // root of vault repo by default
+const knowledgePath = process.env.VAULT_PATH || "";
 
 function getOctokit() {
   const token = process.env.GITHUB_TOKEN;
@@ -14,9 +26,6 @@ function getOctokit() {
   return new Octokit({ auth: token });
 }
 
-/**
- * List markdown files in the dedicated vault (or knowledge/ folder of app repo)
- */
 export async function listKnowledgeFiles(): Promise<
   { name: string; path: string; sha: string; size: number }[]
 > {
@@ -62,7 +71,7 @@ export async function listKnowledgeFiles(): Promise<
             }
           }
         } catch {
-          // ignore subfolder errors
+          // ignore
         }
       }
     }
@@ -90,7 +99,7 @@ export async function readKnowledgeFile(path: string): Promise<string | null> {
       return null;
     }
 
-    return Buffer.from(data.content, "base64").toString("utf-8");
+    return fromBase64(data.content);
   } catch (err: any) {
     console.error("readKnowledgeFile error:", err.message);
     return null;
@@ -164,7 +173,7 @@ export async function saveKnowledgeNote(
       repo: vaultRepo,
       path,
       message,
-      content: Buffer.from(content).toString("base64"),
+      content: toBase64(content),
       sha,
     });
 
@@ -175,9 +184,6 @@ export async function saveKnowledgeNote(
   }
 }
 
-/**
- * Append a conversation turn to a session log in the *app* repo
- */
 export async function appendSessionLog(
   sessionId: string,
   role: "user" | "assistant",
@@ -200,7 +206,7 @@ export async function appendSessionLog(
         path,
       });
       if (!Array.isArray(data) && data.type === "file" && "content" in data) {
-        existing = Buffer.from(data.content, "base64").toString("utf-8");
+        existing = fromBase64(data.content);
         sha = data.sha;
       }
     } catch {
@@ -212,7 +218,7 @@ export async function appendSessionLog(
       repo: appRepo,
       path,
       message: `Append ${role} message to session ${sessionId}`,
-      content: Buffer.from(existing + entry).toString("base64"),
+      content: toBase64(existing + entry),
       sha,
     });
   } catch (err: any) {
