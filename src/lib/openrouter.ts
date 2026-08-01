@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { ChatCompletion } from "openai/resources/chat/completions";
 
 const openrouter = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
@@ -12,15 +13,15 @@ const openrouter = new OpenAI({
 export const DEFAULT_MODEL =
   process.env.OPENROUTER_MODEL || "anthropic/claude-3.5-sonnet";
 
+/** Non-streaming chat completion – always returns ChatCompletion with .choices */
 export async function chatCompletion(
   messages: OpenAI.Chat.ChatCompletionMessageParam[],
   options: {
     model?: string;
     temperature?: number;
     max_tokens?: number;
-    stream?: boolean;
   } = {}
-) {
+): Promise<ChatCompletion> {
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error(
       "OPENROUTER_API_KEY is not set. Add it to your .env.local file."
@@ -32,7 +33,7 @@ export async function chatCompletion(
     messages,
     temperature: options.temperature ?? 0.4,
     max_tokens: options.max_tokens ?? 2048,
-    stream: options.stream ?? false,
+    stream: false,
   });
 
   return response;
