@@ -3,7 +3,14 @@
 import { useState, useRef, useEffect, FormEvent } from "react";
 import { v4 as uuidv4 } from "uuid";
 
-type StepId = "query" | "intent" | "planning" | "tools" | "execution" | "answer" | "response";
+type StepId =
+  | "query"
+  | "intent"
+  | "planning"
+  | "tools"
+  | "execution"
+  | "answer"
+  | "response";
 
 interface ChatMessage {
   id: string;
@@ -11,14 +18,52 @@ interface ChatMessage {
   content: string;
 }
 
-const STEPS: { id: StepId; label: string; sub: string; color: string }[] = [
-  { id: "query", label: "User Query", sub: "Waiting for input...", color: "emerald" },
-  { id: "intent", label: "Intent Analysis", sub: "Understand Request", color: "orange" },
-  { id: "planning", label: "Task Planning", sub: "Generate Plan", color: "amber" },
-  { id: "tools", label: "Plugins & Tools", sub: "MCP Tools", color: "blue" },
-  { id: "execution", label: "Action Execution", sub: "Perform Tasks", color: "cyan" },
-  { id: "answer", label: "Answer Generator", sub: "Compose Response", color: "rose" },
-  { id: "response", label: "User Response", sub: "Deliver Answer", color: "emerald" },
+const STEPS: { id: StepId; label: string }[] = [
+  { id: "query", label: "Query" },
+  { id: "intent", label: "Intent" },
+  { id: "planning", label: "Plan" },
+  { id: "tools", label: "Tools" },
+  { id: "execution", label: "Execute" },
+  { id: "answer", label: "Answer" },
+  { id: "response", label: "Done" },
+];
+
+const SKILLS = [
+  {
+    id: "web_search",
+    label: "Web Search",
+    icon: "\ud83d\udd0d",
+    hint: "Search the web for latest agentic AI frameworks",
+    desc: "Live web lookup",
+  },
+  {
+    id: "calculator",
+    label: "Calculator",
+    icon: "\ud83e\uddee",
+    hint: "What is 2^10 + 15?",
+    desc: "Math expressions",
+  },
+  {
+    id: "code_execute",
+    label: "Code",
+    icon: "\ud83d\udcbb",
+    hint: "Evaluate: [1,2,3].map(x => x*x)",
+    desc: "JS sandbox",
+  },
+  {
+    id: "get_datetime",
+    label: "DateTime",
+    icon: "\ud83d\udd50",
+    hint: "What is the current date and time?",
+    desc: "Current time",
+  },
+  {
+    id: "memory",
+    label: "Vault",
+    icon: "\ud83d\udcda",
+    hint: "Search my knowledge vault for agentic loops",
+    desc: "Obsidian memory",
+  },
 ];
 
 export default function HomePage() {
@@ -27,7 +72,7 @@ export default function HomePage() {
       id: "welcome",
       role: "assistant",
       content:
-        "Hello! I am **Fast Agentic AI**.\n\n1. Click **⚙️ Add API key** (top right)\n2. Get a key at [openrouter.ai/keys](https://openrouter.ai/keys)\n3. Paste it and click **Save & use**\n\nThen try: What is 2^10 + 15?",
+        "Welcome to **Fast Agentic OS**.\n\n1. Paste your OpenRouter key in **Settings** (above the chat).\n2. Get a key: [openrouter.ai/keys](https://openrouter.ai/keys)\n3. Click a skill on the left or type a query.\n\nTry: *What is 2^10 + 15?*",
     },
   ]);
   const [input, setInput] = useState("");
@@ -35,23 +80,32 @@ export default function HomePage() {
   const [sessionId] = useState(() => uuidv4());
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("openai/gpt-4o-mini");
-  const [showSettings, setShowSettings] = useState(false);
+  const [enabledTools, setEnabledTools] = useState<Record<string, boolean>>({
+    web_search: true,
+    calculator: true,
+    code_execute: true,
+    get_datetime: true,
+    memory: true,
+  });
   const [activeStep, setActiveStep] = useState<StepId | null>(null);
   const [doneSteps, setDoneSteps] = useState<Set<StepId>>(new Set());
   const [progress, setProgress] = useState(0);
-  const [logs, setLogs] = useState<string[]>(["System ready."]);
-  const [status, setStatus] = useState<"idle" | "running" | "ready" | "error">("idle");
-  const [queryPreview, setQueryPreview] = useState("Waiting...");
+  const [logs, setLogs] = useState<string[]>(["Agent OS ready."]);
+  const [status, setStatus] = useState<"idle" | "running" | "ready" | "error">(
+    "idle"
+  );
   const chatEndRef = useRef<HTMLDivElement>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
       const k = localStorage.getItem("faai_openrouter_key");
       const m = localStorage.getItem("faai_openrouter_model");
+      const t = localStorage.getItem("faai_enabled_tools");
       if (k) setApiKey(k);
       if (m) setModel(m);
-      if (!k) setShowSettings(true);
+      if (t) setEnabledTools(JSON.parse(t));
     } catch {}
   }, []);
 
@@ -62,6 +116,24 @@ export default function HomePage() {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
+  const saveSettings = () => {
+    try {
+      localStorage.setItem("faai_openrouter_key", apiKey.trim());
+      localStorage.setItem("faai_openrouter_model", model);
+      localStorage.setItem("faai_enabled_tools", JSON.stringify(enabledTools));
+    } catch {}
+  };
+
+  const toggleTool = (id: string) => {
+    setEnabledTools((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem("faai_enabled_tools", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   const addLog = (msg: string) => {
     const time = new Date().toLocaleTimeString("en-US", {
       hour12: false,
@@ -69,14 +141,12 @@ export default function HomePage() {
       minute: "2-digit",
       second: "2-digit",
     });
-    setLogs((prev) => [...prev, `[${time}] ${msg}`]);
+    setLogs((prev) => [...prev.slice(-80), `[${time}] ${msg}`]);
   };
 
-  const resetVisual = () => {
-    setActiveStep(null);
-    setDoneSteps(new Set());
-    setProgress(0);
-    setQueryPreview("Waiting...");
+  const useSkill = (hint: string) => {
+    setInput(hint);
+    inputRef.current?.focus();
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -84,14 +154,13 @@ export default function HomePage() {
     const text = input.trim();
     if (!text || isRunning) return;
     if (!apiKey.trim()) {
-      setShowSettings(true);
       setMessages((prev) => [
         ...prev,
         {
           id: uuidv4(),
           role: "assistant",
           content:
-            "⚠️ Please add your OpenRouter API key first (⚙️ top right). Get one at https://openrouter.ai/keys",
+            "\u26a0\ufe0f Add your OpenRouter API key in **Settings** (top of this chat). Get one free: https://openrouter.ai/keys",
         },
       ]);
       return;
@@ -99,14 +168,18 @@ export default function HomePage() {
     setInput("");
     setIsRunning(true);
     setStatus("running");
-    resetVisual();
-    setQueryPreview(text.length > 45 ? text.slice(0, 45) + "…" : text);
+    setActiveStep(null);
+    setDoneSteps(new Set());
+    setProgress(0);
     setMessages((prev) => [...prev, { id: uuidv4(), role: "user", content: text }]);
 
     const history = messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .slice(-6)
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+      .map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+      }));
 
     try {
       const res = await fetch("/api/chat", {
@@ -118,6 +191,7 @@ export default function HomePage() {
           history,
           apiKey,
           model,
+          enabledTools,
         }),
       });
       if (!res.ok) {
@@ -159,9 +233,9 @@ export default function HomePage() {
             }
             if (event.type === "log" && event.message) addLog(event.message);
             if (event.type === "memory" && event.message)
-              addLog("🧠 " + event.message);
+              addLog("\ud83e\udde0 " + event.message);
             if (event.type === "tool" && event.message)
-              addLog("🔧 " + event.message);
+              addLog("\ud83d\udd27 " + event.message);
             if (event.type === "content" && event.content) {
               if (!currentAssistantId) {
                 currentAssistantId = uuidv4();
@@ -214,9 +288,9 @@ export default function HomePage() {
                   id: uuidv4(),
                   role: "assistant",
                   content:
-                    "⚠️ **Error**: " +
+                    "\u26a0\ufe0f **Error**: " +
                     event.message +
-                    "\n\nOpen ⚙️ Settings and check your key: https://openrouter.ai/keys",
+                    "\n\nCheck Settings \u2192 API key: https://openrouter.ai/keys",
                 },
               ]);
             }
@@ -231,27 +305,13 @@ export default function HomePage() {
         {
           id: uuidv4(),
           role: "assistant",
-          content: "⚠️ **Error**: " + err.message,
+          content: "\u26a0\ufe0f **Error**: " + err.message,
         },
       ]);
     } finally {
       setIsRunning(false);
       if (status !== "error") setStatus("ready");
     }
-  };
-
-  const handleReset = () => {
-    if (isRunning) return;
-    resetVisual();
-    setLogs(["System ready."]);
-    setStatus("idle");
-    setMessages([
-      {
-        id: "welcome",
-        role: "assistant",
-        content: "Session reset. Ready for a new query.",
-      },
-    ]);
   };
 
   function formatMarkdown(text: string): string {
@@ -265,289 +325,281 @@ export default function HomePage() {
       )
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.+?)\*/g, "<em>$1</em>")
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/`([^`]+)`/g, "<code class='text-cyan-300'>$1</code>")
       .replace(/\n/g, "<br/>");
   }
 
+  const statusLabel =
+    status === "running"
+      ? "Running"
+      : status === "ready"
+        ? "Ready"
+        : status === "error"
+          ? "Error"
+          : "Idle";
+
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-lg">
-              🤖
+    <div className="min-h-screen bg-[#0b0f17] text-slate-200">
+      <header className="border-b border-slate-800/80 bg-[#0d121c]/95 backdrop-blur sticky top-0 z-50">
+        <div className="max-w-[1400px] mx-auto px-4 py-2.5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+              OS
             </div>
-            <div>
-              <h1 className="text-lg font-bold tracking-tight">
-                <span className="text-blue-400">Fast</span>{" "}
-                <span className="text-white">Agentic</span>{" "}
-                <span className="text-orange-400">AI</span>
-              </h1>
-              <p className="text-xs text-slate-400">
-                OpenRouter · MCP Tools · Obsidian Vault
-              </p>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold tracking-tight truncate">
+                Fast Agentic OS
+              </div>
+              <div className="text-[10px] text-slate-500 truncate">
+                MCP · Pipeline · OpenRouter · Vault
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             <span
-              className={`text-xs px-2.5 py-1 rounded-full border ${
+              className={`text-[11px] px-2.5 py-1 rounded-full border font-medium ${
                 status === "running"
-                  ? "bg-blue-950 text-blue-300 border-blue-800"
+                  ? "bg-blue-950/80 text-blue-300 border-blue-700"
                   : status === "ready"
-                    ? "bg-emerald-950 text-emerald-300 border-emerald-800"
+                    ? "bg-emerald-950/80 text-emerald-300 border-emerald-700"
                     : status === "error"
-                      ? "bg-rose-950 text-rose-300 border-rose-800"
-                      : "bg-slate-800 text-slate-400 border-slate-700"
+                      ? "bg-rose-950/80 text-rose-300 border-rose-700"
+                      : "bg-slate-900 text-slate-400 border-slate-700"
               }`}
             >
-              {status === "running"
-                ? "● Running"
-                : status === "ready"
-                  ? "● Ready"
-                  : status === "error"
-                    ? "● Error"
-                    : "○ Idle"}
+              {status === "running" ? "\u25cf" : status === "ready" ? "\u25cf" : "\u25cb"}{" "}
+              {statusLabel}
             </span>
-            <button
-              type="button"
-              onClick={() => setShowSettings((v) => !v)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700"
-            >
-              ⚙️ {apiKey ? "Key set" : "Add API key"}
-            </button>
-            <button
-              onClick={handleReset}
-              disabled={isRunning}
-              className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 disabled:opacity-50"
-            >
-              Reset
-            </button>
+            <span className="hidden sm:inline text-[11px] text-slate-500 px-2">
+              {progress}%
+            </span>
           </div>
         </div>
       </header>
 
-      {showSettings && (
-        <div className="max-w-7xl mx-auto px-4 pt-4">
-          <div className="bg-slate-900 border border-blue-800/50 rounded-2xl p-5">
-            <div className="flex justify-between mb-3">
-              <h2 className="text-sm font-semibold text-slate-200">
-                ⚙️ Connect OpenRouter
-              </h2>
-              <button
-                type="button"
-                onClick={() => setShowSettings(false)}
-                className="text-xs text-slate-400"
-              >
-                Close
-              </button>
+      <div className="max-w-[1400px] mx-auto px-3 py-3 grid grid-cols-1 lg:grid-cols-12 gap-3 h-[calc(100vh-3.5rem)]">
+        <aside className="lg:col-span-4 xl:col-span-3 flex flex-col gap-3 min-h-0 overflow-y-auto">
+          <div className="rounded-xl border border-slate-800 bg-[#121826] p-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+              Skills & Tools
             </div>
-            <p className="text-xs text-slate-400 mb-3">
-              1. Open{" "}
-              <a
-                href="https://openrouter.ai/keys"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-400 underline"
-              >
-                openrouter.ai/keys
-              </a>
-              {" "}→ create key → paste below → Save
-            </p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">
-                  API key
-                </label>
-                <input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-or-v1-..."
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">
-                  Model
-                </label>
-                <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100"
-                >
-                  <option value="openai/gpt-4o-mini">
-                    openai/gpt-4o-mini (recommended)
-                  </option>
-                  <option value="openai/gpt-4o">openai/gpt-4o</option>
-                  <option value="anthropic/claude-3.5-sonnet">
-                    anthropic/claude-3.5-sonnet
-                  </option>
-                  <option value="google/gemini-2.0-flash-001">
-                    google/gemini-2.0-flash-001
-                  </option>
-                  <option value="deepseek/deepseek-chat">
-                    deepseek/deepseek-chat
-                  </option>
-                </select>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => {
-                    try {
-                      localStorage.setItem(
-                        "faai_openrouter_key",
-                        apiKey.trim()
-                      );
-                      localStorage.setItem("faai_openrouter_model", model);
-                    } catch {}
-                    setShowSettings(false);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm"
-                >
-                  Save &amp; use
-                </button>
-                <a
-                  href="https://openrouter.ai/keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-4 py-2 rounded-xl border border-blue-700 text-blue-300 text-sm"
-                >
-                  Get key ↗
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <main className="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <section className="lg:col-span-5 space-y-4">
-          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
-            <h2 className="text-sm font-semibold text-slate-300 mb-4">
-              📊 Pipeline
-            </h2>
-            <div className="mb-4">
-              <div className="flex justify-between text-xs text-slate-400 mb-1">
-                <span>Progress</span>
-                <span>{progress}%</span>
-              </div>
-              <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+            <div className="space-y-1.5">
+              {SKILLS.map((s) => (
                 <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
+                  key={s.id}
+                  className="flex items-center gap-2 rounded-lg border border-slate-800/80 bg-slate-900/40 px-2 py-1.5"
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleTool(s.id)}
+                    className={`w-8 h-5 rounded-full relative shrink-0 transition ${
+                      enabledTools[s.id] ? "bg-blue-600" : "bg-slate-700"
+                    }`}
+                    title={enabledTools[s.id] ? "Enabled" : "Disabled"}
+                  >
+                    <span
+                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition ${
+                        enabledTools[s.id] ? "left-3.5" : "left-0.5"
+                      }`}
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => useSkill(s.hint)}
+                    className="flex-1 flex items-center gap-2 text-left min-w-0 hover:opacity-90"
+                  >
+                    <span className="text-sm">{s.icon}</span>
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-slate-200 truncate">
+                        {s.label}
+                      </div>
+                      <div className="text-[10px] text-slate-500 truncate">
+                        {s.desc}
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              ))}
             </div>
-            <div className="space-y-2">
+            <p className="text-[10px] text-slate-600 mt-2">
+              Toggle = enable for agent · Click label = fill prompt
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-[#121826] p-3">
+            <div className="flex justify-between items-center mb-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Pipeline
+              </div>
+              <div className="text-[10px] text-slate-500">{progress}%</div>
+            </div>
+            <div className="h-1 bg-slate-800 rounded-full mb-3 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="flex flex-wrap gap-1">
               {STEPS.map((step) => {
                 const isActive = activeStep === step.id;
                 const isDone = doneSteps.has(step.id);
                 return (
-                  <div
+                  <span
                     key={step.id}
-                    className={`flex items-center gap-3 p-3 rounded-xl border border-slate-700 bg-slate-900/50 ${
-                      isActive ? "opacity-100" : isDone ? "opacity-90" : "opacity-45"
+                    className={`text-[10px] px-2 py-1 rounded-md border ${
+                      isActive
+                        ? "bg-blue-600/30 border-blue-500 text-blue-200"
+                        : isDone
+                          ? "bg-emerald-900/40 border-emerald-800 text-emerald-300"
+                          : "bg-slate-900 border-slate-800 text-slate-500"
                     }`}
                   >
-                    <div
-                      className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm ${
-                        step.color === "emerald"
-                          ? "bg-emerald-600"
-                          : step.color === "orange"
-                            ? "bg-orange-500"
-                            : step.color === "amber"
-                              ? "bg-amber-500"
-                              : step.color === "blue"
-                                ? "bg-blue-500"
-                                : step.color === "cyan"
-                                  ? "bg-cyan-500"
-                                  : "bg-rose-500"
-                      }`}
-                    >
-                      {isActive ? "⏳" : isDone ? "✓" : "○"}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm text-slate-200">{step.label}</div>
-                      <div className="text-xs text-slate-400 truncate">
-                        {step.id === "query" ? queryPreview : step.sub}
-                      </div>
-                    </div>
-                  </div>
+                    {isDone ? "\u2713 " : isActive ? "\u2026 " : ""}
+                    {step.label}
+                  </span>
                 );
               })}
             </div>
           </div>
-          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4">
-            <h3 className="text-xs font-semibold text-slate-400 mb-2">Log</h3>
-            <div className="h-32 overflow-y-auto text-[11px] text-slate-400 font-mono space-y-1">
+
+          <div className="rounded-xl border border-slate-800 bg-[#121826] p-3 flex-1 min-h-[120px] flex flex-col">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+              Activity
+            </div>
+            <div className="flex-1 overflow-y-auto text-[11px] font-mono text-slate-500 space-y-1">
               {logs.map((l, i) => (
-                <div key={i}>{l}</div>
+                <div key={i} className="leading-snug">
+                  {l}
+                </div>
               ))}
               <div ref={logEndRef} />
             </div>
           </div>
-        </section>
+        </aside>
 
-        <section className="lg:col-span-7 flex flex-col">
-          <div className="bg-slate-900/70 border border-slate-800 rounded-2xl flex flex-col h-[calc(100vh-9rem)] min-h-[480px]">
-            <div className="px-5 py-3 border-b border-slate-800 text-sm text-slate-200">
-              Agent Chat
+        <section className="lg:col-span-8 xl:col-span-9 flex flex-col min-h-0 rounded-xl border border-slate-800 bg-[#121826] overflow-hidden">
+          <div className="border-b border-slate-800 bg-[#0e1420] px-3 py-2.5 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Settings · OpenRouter
+              </div>
+              <a
+                href="https://openrouter.ai/keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-blue-400 hover:text-blue-300 underline"
+              >
+                Get API key \u2197
+              </a>
             </div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
-              {messages.map((m) => (
-                <div
-                  key={m.id}
-                  className={`flex gap-3 ${m.role === "user" ? "flex-row-reverse" : ""}`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${
-                      m.role === "user"
-                        ? "bg-emerald-600"
-                        : "bg-gradient-to-br from-blue-500 to-purple-600"
-                    }`}
-                  >
-                    {m.role === "user" ? "U" : "AI"}
-                  </div>
-                  <div
-                    className={`rounded-2xl px-4 py-3 max-w-[85%] text-sm ${
-                      m.role === "user"
-                        ? "bg-emerald-700 text-white"
-                        : "bg-slate-800 border border-slate-600 text-slate-200"
-                    }`}
-                    dangerouslySetInnerHTML={{
-                      __html: formatMarkdown(m.content),
-                    }}
-                  />
-                </div>
-              ))}
-              {isRunning && (
-                <div className="text-slate-400 text-sm">Thinking…</div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                onBlur={saveSettings}
+                placeholder="Paste sk-or-v1-... API key here"
+                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <select
+                value={model}
+                onChange={(e) => {
+                  setModel(e.target.value);
+                  try {
+                    localStorage.setItem("faai_openrouter_model", e.target.value);
+                  } catch {}
+                }}
+                className="sm:w-56 bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="openai/gpt-4o-mini">gpt-4o-mini</option>
+                <option value="openai/gpt-4o">gpt-4o</option>
+                <option value="anthropic/claude-3.5-sonnet">
+                  claude-3.5-sonnet
+                </option>
+                <option value="google/gemini-2.0-flash-001">
+                  gemini-2.0-flash
+                </option>
+                <option value="deepseek/deepseek-chat">deepseek-chat</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  saveSettings();
+                  addLog("Settings saved.");
+                }}
+                className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium shrink-0"
+              >
+                Save
+              </button>
+            </div>
+            <div className="text-[10px] text-slate-600">
+              Key stored in this browser only ·{" "}
+              {apiKey ? (
+                <span className="text-emerald-500">Key set</span>
+              ) : (
+                <span className="text-amber-500">No key yet</span>
               )}
-              <div ref={chatEndRef} />
-            </div>
-            <div className="p-4 border-t border-slate-800">
-              <form onSubmit={handleSubmit} className="flex gap-3">
-                <input
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Enter your query..."
-                  disabled={isRunning}
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100"
-                />
-                <button
-                  type="submit"
-                  disabled={isRunning || !input.trim()}
-                  className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm disabled:opacity-50"
-                >
-                  Send
-                </button>
-              </form>
             </div>
           </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {messages.map((m) => (
+              <div
+                key={m.id}
+                className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}
+              >
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                    m.role === "user"
+                      ? "bg-emerald-600 text-white"
+                      : "bg-gradient-to-br from-blue-500 to-violet-600 text-white"
+                  }`}
+                >
+                  {m.role === "user" ? "U" : "AI"}
+                </div>
+                <div
+                  className={`rounded-xl px-3 py-2 max-w-[88%] text-sm leading-relaxed ${
+                    m.role === "user"
+                      ? "bg-emerald-700/90 text-white"
+                      : "bg-slate-900/80 border border-slate-800 text-slate-200"
+                  }`}
+                  dangerouslySetInnerHTML={{
+                    __html: formatMarkdown(m.content),
+                  }}
+                />
+              </div>
+            ))}
+            {isRunning && (
+              <div className="text-xs text-slate-500 pl-9 animate-pulse">
+                Agent working\u2026
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          <div className="border-t border-slate-800 p-3 bg-[#0e1420]">
+            <form onSubmit={handleSubmit} className="flex gap-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Message the agent\u2026 or click a skill on the left"
+                disabled={isRunning}
+                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60"
+                autoComplete="off"
+              />
+              <button
+                type="submit"
+                disabled={isRunning || !input.trim()}
+                className="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Send
+              </button>
+            </form>
+          </div>
         </section>
-      </main>
+      </div>
     </div>
   );
 }
