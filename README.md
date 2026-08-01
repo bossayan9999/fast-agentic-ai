@@ -1,20 +1,22 @@
 # Fast Agentic AI Engineering Loop
 
-Full-stack web application that implements the **Fast Agentic AI Engineering Loop** with:
+Full-stack web application implementing the **Fast Agentic AI Engineering Loop** with:
 
-- **OpenRouter** – multi-model backend (Claude, GPT-4o, Gemini, Llama, DeepSeek, …)
-- **GitHub** as Obsidian-style Knowledge Vault + Backup Repo
-- **Cloudflare Pages / Workers** ready deployment
-- Real-time SSE streaming of the agentic pipeline steps
+- **OpenRouter** – multi-model backend (Claude, GPT-4o, Gemini, Llama, DeepSeek…)
+- **MCP-style tool registry** – web_search, calculator, code_execute, get_datetime
+- **Dedicated Obsidian Vault** – https://github.com/bossayan9999/obsidian-agent-vault
+- **GitHub** as Backup Repo + session logs
+- **Cloudflare Pages** ready deployment
+- Real-time SSE streaming of every pipeline step
 
 ## Architecture
 
 ```
 User Query
     ↓
-Intent Analysis  →  Task Planning  →  Plugins & Tools
+Intent Analysis  →  Task Planning  →  Plugins & Tools (MCP)
     ↓                                      ↓
-Memory & Context (Obsidian Vault on GitHub)   Action Execution
+Memory (Obsidian Vault)              Action Execution
     ↓                                      ↓
               MCP (Meta-Controller & Planner)
                         ↓
@@ -23,35 +25,38 @@ Memory & Context (Obsidian Vault on GitHub)   Action Execution
                   Feedback Loop
 ```
 
-## Quick Start (Local)
+## Repositories
 
-### 1. Clone & install
+| Repo | Purpose |
+|------|---------|
+| [fast-agentic-ai](https://github.com/bossayan9999/fast-agentic-ai) | Main Next.js app |
+| [obsidian-agent-vault](https://github.com/bossayan9999/obsidian-agent-vault) | Dedicated knowledge vault |
+
+## Quick Start
 
 ```bash
 git clone https://github.com/bossayan9999/fast-agentic-ai.git
 cd fast-agentic-ai
 npm install
-```
-
-### 2. Configure environment
-
-```bash
 cp .env.example .env.local
 ```
 
 Edit `.env.local`:
 
 ```env
-OPENROUTER_API_KEY=sk-or-v1-xxxxxxxx          # required – https://openrouter.ai/keys
-OPENROUTER_MODEL=anthropic/claude-3.5-sonnet  # or any OpenRouter model
+OPENROUTER_API_KEY=sk-or-v1-your-key
+OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
 
-# Optional – enables real GitHub Vault search + session logging
-GITHUB_TOKEN=ghp_xxxxxxxx
+GITHUB_TOKEN=ghp_your_pat_with_repo_scope
 GITHUB_OWNER=bossayan9999
 GITHUB_REPO=fast-agentic-ai
-```
 
-### 3. Run
+VAULT_OWNER=bossayan9999
+VAULT_REPO=obsidian-agent-vault
+VAULT_PATH=
+
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
 
 ```bash
 npm run dev
@@ -59,42 +64,55 @@ npm run dev
 
 Open http://localhost:3000
 
-## Deploy to Cloudflare Pages
+## Cloudflare Pages – Environment Variables
 
-This project is configured for `@cloudflare/next-on-pages`.
+1. Go to [Cloudflare Dashboard → Pages](https://dash.cloudflare.com) → your project → **Settings → Environment variables**
+2. Add the following for **Production** (and Preview if desired):
+
+| Variable | Value |
+|----------|--------|
+| `OPENROUTER_API_KEY` | your OpenRouter key |
+| `OPENROUTER_MODEL` | `anthropic/claude-3.5-sonnet` (or any model) |
+| `GITHUB_TOKEN` | GitHub PAT with `repo` scope |
+| `GITHUB_OWNER` | `bossayan9999` |
+| `GITHUB_REPO` | `fast-agentic-ai` |
+| `VAULT_OWNER` | `bossayan9999` |
+| `VAULT_REPO` | `obsidian-agent-vault` |
+| `VAULT_PATH` | (leave empty) |
+| `NEXT_PUBLIC_APP_URL` | `https://your-project.pages.dev` |
+
+3. Build settings:
+   - Framework: Next.js
+   - Build command: `npx @cloudflare/next-on-pages`
+   - Output directory: `.vercel/output/static`
+   - Compatibility flags: `nodejs_compat`
+
+4. Deploy (or push to `main`).
+
+CLI alternative:
 
 ```bash
-npm install
 npm run pages:build
-npm run preview   # local preview
-npm run deploy    # deploy
+npx wrangler pages deploy .vercel/output/static --project-name=fast-agentic-ai
 ```
 
-Or connect the GitHub repo in the [Cloudflare Pages dashboard](https://dash.cloudflare.com).
+## MCP Tools
 
-**Build settings:**
-- Framework preset: Next.js
-- Build command: `npx @cloudflare/next-on-pages`
-- Build output directory: `.vercel/output/static`
+| Tool | Description |
+|------|-------------|
+| `web_search` | Free DuckDuckGo-based search |
+| `calculator` | Safe math expressions |
+| `code_execute` | Sandboxed JS expressions only |
+| `get_datetime` | Current time |
+| Memory search | Automatic against Obsidian vault |
 
-Add the same environment variables in the Cloudflare Pages project settings.
-
-## GitHub as Knowledge Vault
-
-- All `.md` files under `/knowledge` are searchable by the agent.
-- Sessions can be automatically logged to `knowledge/sessions/`.
-- Point `GITHUB_REPO` at any repository that contains markdown notes for an Obsidian + GitHub backup workflow.
+The MCP (Meta-Controller) uses the LLM to decide which tools to call for each query.
 
 ## API
 
-### `POST /api/chat`
-Streaming SSE endpoint.
-
-### `GET /api/memory?q=keyword`
-Search the knowledge vault.
-
-### `POST /api/memory`
-Save a note to the vault.
+- `POST /api/chat` – SSE agentic loop
+- `GET /api/memory?q=...` – search vault
+- `POST /api/memory` – save note to vault
 
 ## License
 
