@@ -5,7 +5,8 @@ import {
   saveKnowledgeNote,
 } from "@/lib/github-memory";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -19,10 +20,7 @@ export async function GET(req: NextRequest) {
     const files = await listKnowledgeFiles();
     return NextResponse.json({ files });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
 
@@ -38,9 +36,6 @@ export async function POST(req: NextRequest) {
     const result = await saveKnowledgeNote(filename, content, message);
     return NextResponse.json(result);
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

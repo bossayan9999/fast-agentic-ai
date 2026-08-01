@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { runAgenticLoop } from "@/lib/agent";
-import { v4 as uuidv4 } from "uuid";
 
-export const runtime = "nodejs";
+// Edge runtime required for Cloudflare next-on-pages
+export const runtime = "edge";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const sid = sessionId || uuidv4();
+    const sid = sessionId || crypto.randomUUID();
 
     const stream = new ReadableStream({
       async start(controller) {
