@@ -17,10 +17,12 @@ export interface ToolDefinition {
   execute: (args: Record<string, any>) => Promise<ToolResult>;
 }
 
-async function webSearch(args: { query: string; max_results?: number }): Promise<ToolResult> {
-  const query = (args.query || "").trim();
+async function webSearch(args: Record<string, any>): Promise<ToolResult> {
+  const query = String(args.query || "").trim();
   if (!query) return { success: false, error: "query is required" };
-  const max = Math.min(args.max_results || 5, 8);
+
+  const max = Math.min(Number(args.max_results) || 5, 8);
+
   try {
     const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
     const res = await fetch(url, {
@@ -28,7 +30,9 @@ async function webSearch(args: { query: string; max_results?: number }): Promise
       signal: AbortSignal.timeout(8000),
     });
     const data = await res.json();
+
     const results: { title: string; snippet: string; url?: string }[] = [];
+
     if (data.AbstractText) {
       results.push({
         title: data.Heading || "Summary",
@@ -36,6 +40,7 @@ async function webSearch(args: { query: string; max_results?: number }): Promise
         url: data.AbstractURL,
       });
     }
+
     if (Array.isArray(data.RelatedTopics)) {
       for (const t of data.RelatedTopics.slice(0, max)) {
         if (t.Text) {
@@ -57,12 +62,14 @@ async function webSearch(args: { query: string; max_results?: number }): Promise
         }
       }
     }
+
     if (results.length === 0) {
       results.push({
         title: "Search note",
         snippet: `No instant answer for "${query}". Consider refining the query or using a dedicated search API (Serper / Tavily / Brave).`,
       });
     }
+
     return {
       success: true,
       data: results.slice(0, max),
@@ -77,10 +84,12 @@ async function webSearch(args: { query: string; max_results?: number }): Promise
   }
 }
 
-async function codeExecute(args: { code: string; language?: string }): Promise<ToolResult> {
-  const code = (args.code || "").trim();
-  const lang = (args.language || "javascript").toLowerCase();
+async function codeExecute(args: Record<string, any>): Promise<ToolResult> {
+  const code = String(args.code || "").trim();
+  const lang = String(args.language || "javascript").toLowerCase();
+
   if (!code) return { success: false, error: "code is required" };
+
   if (lang !== "javascript" && lang !== "js") {
     return {
       success: false,
@@ -88,22 +97,48 @@ async function codeExecute(args: { code: string; language?: string }): Promise<T
       summary: "Unsupported language",
     };
   }
+
   const forbidden = [
-    /require\s*\(/i, /import\s+/i, /process\./i, /global/i, /Function\s*\(/i,
-    /eval\s*\(/i, /fetch\s*\(/i, /XMLHttpRequest/i, /child_process/i, /fs\./i,
-    /__dirname/i, /__filename/i, /constructor/i, /prototype/i,
+    /require\s*\(/i,
+    /import\s+/i,
+    /process\./i,
+    /global/i,
+    /Function\s*\(/i,
+    /eval\s*\(/i,
+    /fetch\s*\(/i,
+    /XMLHttpRequest/i,
+    /child_process/i,
+    /fs\./i,
+    /__dirname/i,
+    /__filename/i,
+    /constructor/i,
+    /prototype/i,
   ];
+
   for (const re of forbidden) {
     if (re.test(code)) {
-      return { success: false, error: "Code contains blocked patterns for security.", summary: "Blocked by sandbox" };
+      return {
+        success: false,
+        error: "Code contains blocked patterns for security.",
+        summary: "Blocked by sandbox",
+      };
     }
   }
+
   try {
     const fn = new Function(`"use strict"; return (${code});`);
     const result = fn();
-    return { success: true, data: { result, type: typeof result }, summary: `Evaluated expression → ${JSON.stringify(result)}` };
+    return {
+      success: true,
+      data: { result, type: typeof result },
+      summary: `Evaluated expression → ${JSON.stringify(result)}`,
+    };
   } catch (err: any) {
-    return { success: false, error: err.message || "Execution error", summary: "Code execution failed" };
+    return {
+      success: false,
+      error: err.message || "Execution error",
+      summary: "Code execution failed",
+    };
   }
 }
 
@@ -121,19 +156,25 @@ async function getDateTime(_args: Record<string, any>): Promise<ToolResult> {
   };
 }
 
-async function calculator(args: { expression: string }): Promise<ToolResult> {
-  const expr = (args.expression || "").trim();
+async function calculator(args: Record<string, any>): Promise<ToolResult> {
+  const expr = String(args.expression || "").trim();
   if (!expr) return { success: false, error: "expression is required" };
+
   if (!/^[\d\s+\-*/().%^]+$/.test(expr)) {
     return { success: false, error: "Invalid characters in expression" };
   }
+
   try {
     const safe = expr.replace(/\^/g, "**");
     const result = new Function(`"use strict"; return (${safe});`)();
     if (typeof result !== "number" || !isFinite(result)) {
       return { success: false, error: "Result is not a finite number" };
     }
-    return { success: true, data: { expression: expr, result }, summary: `${expr} = ${result}` };
+    return {
+      success: true,
+      data: { expression: expr, result },
+      summary: `${expr} = ${result}`,
+    };
   } catch (err: any) {
     return { success: false, error: err.message };
   }
@@ -142,7 +183,8 @@ async function calculator(args: { expression: string }): Promise<ToolResult> {
 export const TOOLS: Record<string, ToolDefinition> = {
   web_search: {
     name: "web_search",
-    description: "Search the web for up-to-date information. Use for current events, facts, documentation, or anything that may not be in the knowledge vault.",
+    description:
+      "Search the web for up-to-date information. Use for current events, facts, documentation, or anything that may not be in the knowledge vault.",
     inputSchema: {
       type: "object",
       properties: {
@@ -155,7 +197,8 @@ export const TOOLS: Record<string, ToolDefinition> = {
   },
   code_execute: {
     name: "code_execute",
-    description: "Safely evaluate a simple JavaScript expression (math, JSON, basic logic). No I/O, no network, no system access.",
+    description:
+      "Safely evaluate a simple JavaScript expression (math, JSON, basic logic). No I/O, no network, no system access.",
     inputSchema: {
       type: "object",
       properties: {
