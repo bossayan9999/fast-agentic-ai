@@ -1,14 +1,19 @@
 import { NextRequest } from "next/server";
 import { runAgenticLoop } from "@/lib/agent";
 
-// Edge runtime required for Cloudflare next-on-pages
 export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { message, sessionId, history = [] } = body;
+    const {
+      message,
+      sessionId,
+      history = [],
+      apiKey,
+      model,
+    } = body;
 
     if (!message || typeof message !== "string") {
       return new Response(JSON.stringify({ error: "message is required" }), {
@@ -18,6 +23,10 @@ export async function POST(req: NextRequest) {
     }
 
     const sid = sessionId || crypto.randomUUID();
+    const agentOptions = {
+      apiKey: typeof apiKey === "string" && apiKey.trim() ? apiKey.trim() : undefined,
+      model: typeof model === "string" && model.trim() ? model.trim() : undefined,
+    };
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -30,7 +39,12 @@ export async function POST(req: NextRequest) {
         };
 
         try {
-          for await (const event of runAgenticLoop(message, sid, history)) {
+          for await (const event of runAgenticLoop(
+            message,
+            sid,
+            history,
+            agentOptions
+          )) {
             send(event);
           }
         } catch (err: any) {
